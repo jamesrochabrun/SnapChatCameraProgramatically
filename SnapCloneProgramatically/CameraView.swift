@@ -20,6 +20,7 @@ class CameraView: UIView  {
         let iv = UIImageView(frame: UIScreen.main.bounds)
         return iv
     }()
+    fileprivate var inProgressPhotoCaptureDelegates = [Int64 : PhotoCaptureDelegate]()
     
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -30,10 +31,15 @@ class CameraView: UIView  {
     private func initSession() {
         
         captureSession = AVCaptureSession()
-        captureSession?.sessionPreset = AVCaptureSessionPreset1920x1080
-        let backCamera = AVCaptureDevice.defaultDevice(withMediaType: AVMediaTypeVideo)
+       // captureSession?.sessionPreset = AVCaptureSessionPreset1920x1080
+        //let backCamera = AVCaptureDevice.defaultDevice(withMediaType: AVMediaTypeVideo)
+        
+        let frontCamera = AVCaptureDevice.defaultDevice(withDeviceType: .builtInWideAngleCamera, mediaType: AVMediaTypeVideo, position: .front)
+        
+        let backCamera = AVCaptureDevice.defaultDevice(withDeviceType: .builtInWideAngleCamera, mediaType: AVMediaTypeVideo, position: .back)
+
         do {
-            let input = try AVCaptureDeviceInput(device: backCamera)
+            let input = try AVCaptureDeviceInput(device: frontCamera)
             
             if (captureSession?.canAddInput(input))! {
                 captureSession?.addInput(input)
@@ -59,9 +65,10 @@ class CameraView: UIView  {
     }
 }
 
-extension CameraView: AVCapturePhotoCaptureDelegate {
+extension CameraView {
     
     func didPressTakePhoto() {
+        
         let settings = AVCapturePhotoSettings()
         let previewPixelType = settings.availablePreviewPhotoPixelFormatTypes.first!
         let previewFormat = [kCVPixelBufferPixelFormatTypeKey as String: previewPixelType,
@@ -69,7 +76,53 @@ extension CameraView: AVCapturePhotoCaptureDelegate {
                              kCVPixelBufferHeightKey as String: 160,
                              ]
         settings.previewPhotoFormat = previewFormat
-        self.stillImageOutput?.capturePhoto(with: settings, delegate: self)
+        
+        let photoCaptureDelegate = PhotoCaptureDelegate(with: settings, capturedPhoto: { [unowned self] (image) in
+            self.tempImageView.image = image
+            self.tempImageView.isHidden = false
+        }, completed: { [unowned self] (photoCaptureDelegate) in
+            // When the capture is complete, remove a reference to the photo capture delegate so it can be deallocated.
+           self.inProgressPhotoCaptureDelegates[photoCaptureDelegate.requestedPhotoSettings.uniqueID] = nil
+        })
+        
+        /*
+         The Photo Output keeps a weak reference to the photo capture delegate so
+         we store it in an array to maintain a strong reference to this object
+         until the capture is completed.
+         */
+        
+        self.inProgressPhotoCaptureDelegates[photoCaptureDelegate.requestedPhotoSettings.uniqueID] = photoCaptureDelegate
+        self.stillImageOutput?.capturePhoto(with: settings, delegate: photoCaptureDelegate)
+    }
+    
+    func didPressTakeAnother() {
+        
+        if didtakePhoto {
+            tempImageView.isHidden = true
+            didtakePhoto = false
+        } else {
+            captureSession?.startRunning()
+            didtakePhoto = true
+            didPressTakePhoto()
+        }
+    }
+}
+
+
+class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
+    
+    private(set) var requestedPhotoSettings: AVCapturePhotoSettings
+    private let completed: (PhotoCaptureDelegate) -> ()
+    private let capturedPhoto: (UIImage) -> ()
+
+    
+    init(with requestedPhotoSettings: AVCapturePhotoSettings,
+         capturedPhoto: @escaping (UIImage) -> (),
+         completed: @escaping (PhotoCaptureDelegate) -> ()) {
+        
+        self.requestedPhotoSettings = requestedPhotoSettings
+        self.completed = completed
+        self.capturedPhoto = capturedPhoto
     }
     
     func capture(_ captureOutput: AVCapturePhotoOutput, didFinishProcessingPhotoSampleBuffer photoSampleBuffer: CMSampleBuffer?, previewPhotoSampleBuffer: CMSampleBuffer?, resolvedSettings: AVCaptureResolvedPhotoSettings, bracketSettings: AVCaptureBracketedStillImageSettings?, error: Error?) {
@@ -86,21 +139,23 @@ extension CameraView: AVCapturePhotoCaptureDelegate {
                 return
         }
         
-        let image = UIImage(cgImage: cgImageRef, scale: 1.0, orientation: .right)
-        tempImageView.image = image//UIImage(data: dataImage)
-        tempImageView.isHidden = false
+        let image = UIImage(cgImage: cgImageRef, scale: 1.0, orientation: .leftMirrored)
+        capturedPhoto(image)
     }
     
-    func didPressTakeAnother() {
-        
-        if didtakePhoto {
-            tempImageView.isHidden = true
-            didtakePhoto = false
-        } else {
-            captureSession?.startRunning()
-            didtakePhoto = true
-            didPressTakePhoto()
-        }
+    func capture(_ captureOutput: AVCapturePhotoOutput, didFinishCaptureForResolvedSettings resolvedSettings: AVCaptureResolvedPhotoSettings, error: Error?) {
+        completed(self)
     }
 }
+
+
+
+
+
+
+
+
+
+
+
 
