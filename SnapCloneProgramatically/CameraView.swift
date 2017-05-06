@@ -10,59 +10,215 @@ import Foundation
 import UIKit
 import AVFoundation
 
+
 class CameraView: UIView  {
     
-    var captureSession: AVCaptureSession?
-    var stillImageOutput: AVCapturePhotoOutput?
+    private var movieFileOutput: AVCaptureMovieFileOutput? = nil
+
+    var captureSession = AVCaptureSession()
+    var stillImageOutput = AVCapturePhotoOutput()
     var previewLayer: AVCaptureVideoPreviewLayer?
     var didtakePhoto = Bool()
     let tempImageView: UIImageView = {
         let iv = UIImageView(frame: UIScreen.main.bounds)
         return iv
     }()
+    fileprivate let sessionQueue = DispatchQueue(label: "session queue", attributes: [], target: nil) // Communicate with the session and other session objects on this queue.
     fileprivate var inProgressPhotoCaptureDelegates = [Int64 : PhotoCaptureDelegate]()
+    
+    // MARK: Session Management
+    
+    private enum SessionSetupResult {
+        case success
+        case notAuthorized
+        case configurationFailed
+    }
+    private var setupResult: SessionSetupResult = .success
+    var videoDeviceInput: AVCaptureDeviceInput!
     
     override init(frame: CGRect) {
         super.init(frame: frame)
-        initSession()
+        configureSession()
         addSubview(tempImageView)
-    }
-    
-    private func initSession() {
-        
-        captureSession = AVCaptureSession()
-       // captureSession?.sessionPreset = AVCaptureSessionPreset1920x1080
-        //let backCamera = AVCaptureDevice.defaultDevice(withMediaType: AVMediaTypeVideo)
-        
-        let frontCamera = AVCaptureDevice.defaultDevice(withDeviceType: .builtInWideAngleCamera, mediaType: AVMediaTypeVideo, position: .front)
-        
-        let backCamera = AVCaptureDevice.defaultDevice(withDeviceType: .builtInWideAngleCamera, mediaType: AVMediaTypeVideo, position: .back)
-
-        do {
-            let input = try AVCaptureDeviceInput(device: frontCamera)
-            
-            if (captureSession?.canAddInput(input))! {
-                captureSession?.addInput(input)
-                stillImageOutput = AVCapturePhotoOutput()
-                
-                if (captureSession?.canAddOutput(stillImageOutput))! {
-                    captureSession?.addOutput(stillImageOutput)
-                    previewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
-                    previewLayer?.videoGravity = AVLayerVideoGravityResizeAspect
-                    previewLayer?.connection.videoOrientation = .portrait
-                    layer.addSublayer(previewLayer!)
-                    captureSession?.startRunning()
-                    previewLayer?.frame = UIScreen.main.bounds
-                }
-            }
-        } catch let error {
-            print("Error initSession: \(error)")
-        }
+        addSubview(cameraOrientationButton)
     }
     
     required init?(coder aDecoder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
+    
+    //MARK: ISSUE 1 NOT FORGET TO REMOVE THE STARTRUNING FROM HERE
+    private func configureSession() {
+        
+        if setupResult != .success { return }
+        
+      //  captureSession.beginConfiguration()
+     //   captureSession.sessionPreset = AVCaptureSessionPresetPhoto
+        
+        // Add video input.
+
+        do {
+            
+            var defaultVideoDevice: AVCaptureDevice?
+            
+            // Choose the back dual camera if available, otherwise default to a wide angle camera.
+            if let dualCameraDevice = AVCaptureDevice.defaultDevice(withDeviceType: .builtInDuoCamera, mediaType: AVMediaTypeVideo, position: .back) {
+                defaultVideoDevice = dualCameraDevice
+            }
+            else if let backCameraDevice = AVCaptureDevice.defaultDevice(withDeviceType: .builtInWideAngleCamera, mediaType: AVMediaTypeVideo, position: .back) {
+                // If the back dual camera is not available, default to the back wide angle camera.
+                defaultVideoDevice = backCameraDevice
+            }
+            else if let frontCameraDevice = AVCaptureDevice.defaultDevice(withDeviceType: .builtInWideAngleCamera, mediaType: AVMediaTypeVideo, position: .front) {
+                // In some cases where users break their phones, the back wide angle camera is not available. In this case, we should default to the front wide angle camera.
+                defaultVideoDevice = frontCameraDevice
+            }
+            
+            let videoDeviceInput = try AVCaptureDeviceInput(device: defaultVideoDevice)
+            
+            if captureSession.canAddInput(videoDeviceInput) {
+                
+                captureSession.addInput(videoDeviceInput)
+                self.videoDeviceInput = videoDeviceInput
+                DispatchQueue.main.async {
+                    /*
+                     Why are we dispatching this to the main queue?
+                     Because AVCaptureVideoPreviewLayer is the backing layer for PreviewView and UIView
+                     can only be manipulated on the main thread.
+                     Note: As an exception to the above rule, it is not necessary to serialize video orientation changes
+                     on the AVCaptureVideoPreviewLayer’s connection with other session manipulation.
+                     
+                     Use the status bar orientation as the initial video orientation. Subsequent orientation changes are
+                     handled by CameraViewController.viewWillTransition(to:with:).
+                     */
+                    let statusBarOrientation = UIApplication.shared.statusBarOrientation
+                    var initialVideoOrientation: AVCaptureVideoOrientation = .portrait
+                    if statusBarOrientation != .unknown {
+                        if let videoOrientation = statusBarOrientation.videoOrientation {
+                            initialVideoOrientation = videoOrientation
+                        }
+                    }
+                    
+                    self.previewLayer?.connection.videoOrientation = initialVideoOrientation
+                }
+                
+            } else {
+                print("Could not add video device input to the session")
+                setupResult = .configurationFailed
+                captureSession.commitConfiguration()
+                return
+            }
+        } catch let error {
+            print("Error configureSession: \(error)")
+            setupResult = .configurationFailed
+            captureSession.commitConfiguration()
+        }
+        
+        // Add photo output.
+        if captureSession.canAddOutput(stillImageOutput) {
+            captureSession.addOutput(stillImageOutput)
+            stillImageOutput.isHighResolutionCaptureEnabled = true
+            
+            previewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
+            previewLayer?.videoGravity = AVLayerVideoGravityResizeAspect
+            previewLayer?.connection.videoOrientation = .portrait
+            layer.addSublayer(previewLayer!)
+            captureSession.startRunning()
+            previewLayer?.frame = UIScreen.main.bounds
+        }
+        
+       // captureSession.commitConfiguration()
+    }
+    
+    // MARK: Device Configuration
+    
+    lazy var cameraOrientationButton: UIButton = {
+        let button = UIButton(frame: CGRect(x: UIScreen.main.bounds.width - 70, y: 15, width: 55, height: 55))
+        button.backgroundColor = .blue
+        button.addTarget(self, action: #selector(changeCamera), for: .touchUpInside)
+        return button
+    }()
+    
+    private let videoDeviceDiscoverySession = AVCaptureDeviceDiscoverySession(deviceTypes: [.builtInWideAngleCamera, .builtInDuoCamera], mediaType: AVMediaTypeVideo, position: .unspecified)!
+    
+    @objc private func changeCamera() {
+        
+        sessionQueue.async {
+            
+            let currentVideoDevice = self.videoDeviceInput.device
+            let currentPosition = currentVideoDevice!.position
+            
+            let preferredPosition: AVCaptureDevicePosition
+            let preferredDeviceType: AVCaptureDeviceType
+            
+            switch currentPosition {
+            case .unspecified, .front:
+                preferredPosition = .back
+                preferredDeviceType = .builtInDuoCamera
+                
+            case .back:
+                preferredPosition = .front
+                preferredDeviceType = .builtInWideAngleCamera
+            }
+            
+            let devices = self.videoDeviceDiscoverySession.devices!
+            var newVideoDevice: AVCaptureDevice? = nil
+            
+            // First, look for a device with both the preferred position and device type. Otherwise, look for a device with only the preferred position.
+            if let device = devices.filter({ $0.position == preferredPosition && $0.deviceType == preferredDeviceType }).first {
+                newVideoDevice = device
+            }
+            else if let device = devices.filter({ $0.position == preferredPosition }).first {
+                newVideoDevice = device
+            }
+            
+            if let videoDevice = newVideoDevice {
+                do {
+                    let videoDeviceInput = try AVCaptureDeviceInput(device: videoDevice)
+                    
+                    self.captureSession.beginConfiguration()
+                    
+                    // Remove the existing device input first, since using the front and back camera simultaneously is not supported.
+                    self.captureSession.removeInput(self.videoDeviceInput)
+                    
+                    if self.captureSession.canAddInput(videoDeviceInput) {
+//                        NotificationCenter.default.removeObserver(self, name: Notification.Name("AVCaptureDeviceSubjectAreaDidChangeNotification"), object: currentVideoDevice!)
+//                        
+//                        NotificationCenter.default.addObserver(self, selector: #selector(self.subjectAreaDidChange), name: Notification.Name("AVCaptureDeviceSubjectAreaDidChangeNotification"), object: videoDeviceInput.device)
+                        
+                        self.captureSession.addInput(videoDeviceInput)
+                        self.videoDeviceInput = videoDeviceInput
+                    }
+                    else {
+                        self.captureSession.addInput(self.videoDeviceInput);
+                    }
+                    
+                    if let connection = self.movieFileOutput?.connection(withMediaType: AVMediaTypeVideo) {
+                        if connection.isVideoStabilizationSupported {
+                            connection.preferredVideoStabilizationMode = .auto
+                        }
+                    }
+                    
+                    /*
+                     Set Live Photo capture enabled if it is supported. When changing cameras, the
+                     `isLivePhotoCaptureEnabled` property of the AVCapturePhotoOutput gets set to NO when
+                     a video device is disconnected from the session. After the new video device is
+                     added to the session, re-enable Live Photo capture on the AVCapturePhotoOutput if it is supported.
+                     */
+                  //  self.stillImageOutput.isLivePhotoCaptureEnabled = self.stillImageOutput.isLivePhotoCaptureSupported;
+                    
+                    self.captureSession.commitConfiguration()
+                }
+                catch {
+                    print("Error occured while creating video device input: \(error)")
+                }
+            }
+            
+        }
+        
+    }
+
+
 }
 
 extension CameraView {
@@ -80,9 +236,9 @@ extension CameraView {
         let photoCaptureDelegate = PhotoCaptureDelegate(with: settings, capturedPhoto: { [unowned self] (image) in
             self.tempImageView.image = image
             self.tempImageView.isHidden = false
-        }, completed: { [unowned self] (photoCaptureDelegate) in
-            // When the capture is complete, remove a reference to the photo capture delegate so it can be deallocated.
-           self.inProgressPhotoCaptureDelegates[photoCaptureDelegate.requestedPhotoSettings.uniqueID] = nil
+            }, completed: { [unowned self] (photoCaptureDelegate) in
+                // When the capture is complete, remove a reference to the photo capture delegate so it can be deallocated.
+                self.inProgressPhotoCaptureDelegates[photoCaptureDelegate.requestedPhotoSettings.uniqueID] = nil
         })
         
         /*
@@ -92,7 +248,7 @@ extension CameraView {
          */
         
         self.inProgressPhotoCaptureDelegates[photoCaptureDelegate.requestedPhotoSettings.uniqueID] = photoCaptureDelegate
-        self.stillImageOutput?.capturePhoto(with: settings, delegate: photoCaptureDelegate)
+        self.stillImageOutput.capturePhoto(with: settings, delegate: photoCaptureDelegate)
     }
     
     func didPressTakeAnother() {
@@ -101,12 +257,17 @@ extension CameraView {
             tempImageView.isHidden = true
             didtakePhoto = false
         } else {
-            captureSession?.startRunning()
+            captureSession.startRunning()
             didtakePhoto = true
             didPressTakePhoto()
         }
     }
 }
+
+
+
+
+
 
 
 class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
@@ -149,7 +310,17 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
 }
 
 
-
+extension UIInterfaceOrientation {
+    var videoOrientation: AVCaptureVideoOrientation? {
+        switch self {
+        case .portrait: return .portrait
+        case .portraitUpsideDown: return .portraitUpsideDown
+        case .landscapeLeft: return .landscapeLeft
+        case .landscapeRight: return .landscapeRight
+        default: return nil
+        }
+    }
+}
 
 
 
