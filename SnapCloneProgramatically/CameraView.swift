@@ -19,6 +19,7 @@ class CameraView: UIView  {
     var stillImageOutput = AVCapturePhotoOutput()
     var previewLayer: AVCaptureVideoPreviewLayer?
     var didtakePhoto = Bool()
+    var isFront = false
     let tempImageView: UIImageView = {
         let iv = UIImageView(frame: UIScreen.main.bounds)
         return iv
@@ -40,7 +41,8 @@ class CameraView: UIView  {
         super.init(frame: frame)
         configureSession()
         addSubview(tempImageView)
-        addSubview(cameraOrientationButton)
+        addSubview(flipCameraButton)
+        addSubview(captureButton)
     }
     
     required init?(coder aDecoder: NSCoder) {
@@ -132,10 +134,20 @@ class CameraView: UIView  {
     
     // MARK: Device Configuration
     
-    lazy var cameraOrientationButton: UIButton = {
+    lazy var flipCameraButton: UIButton = {
         let button = UIButton(frame: CGRect(x: UIScreen.main.bounds.width - 70, y: 15, width: 55, height: 55))
-        button.backgroundColor = .blue
         button.addTarget(self, action: #selector(changeCamera), for: .touchUpInside)
+        button.setImage(#imageLiteral(resourceName: "flip").withRenderingMode(.alwaysTemplate), for: .normal)
+        button.tintColor = .white
+        return button
+    }()
+    
+    lazy var captureButton: UIButton = {
+        let button = UIButton(frame: CGRect(x: (UIScreen.main.bounds.width - 85) / 2, y: UIScreen.main.bounds.height - 110, width: 85, height: 85))
+        button.addTarget(self, action: #selector(didPressTakeAnother), for: .touchUpInside)
+       // button.setImage(#imageLiteral(resourceName: "whiteJoystick").withRenderingMode(.alwaysTemplate), for: .normal)
+        button.setImage(#imageLiteral(resourceName: "whiteJoystick"), for: .normal)
+        button.tintColor = .white
         return button
     }()
     
@@ -143,6 +155,8 @@ class CameraView: UIView  {
     
     @objc private func changeCamera() {
         
+        flipCameraButton.isEnabled = false
+        captureButton.isEnabled = false
         sessionQueue.async {
             
             let currentVideoDevice = self.videoDeviceInput.device
@@ -155,10 +169,11 @@ class CameraView: UIView  {
             case .unspecified, .front:
                 preferredPosition = .back
                 preferredDeviceType = .builtInDuoCamera
-                
+                self.isFront = false
             case .back:
                 preferredPosition = .front
                 preferredDeviceType = .builtInWideAngleCamera
+                self.isFront = true
             }
             
             let devices = self.videoDeviceDiscoverySession.devices!
@@ -182,9 +197,9 @@ class CameraView: UIView  {
                     self.captureSession.removeInput(self.videoDeviceInput)
                     
                     if self.captureSession.canAddInput(videoDeviceInput) {
-//                        NotificationCenter.default.removeObserver(self, name: Notification.Name("AVCaptureDeviceSubjectAreaDidChangeNotification"), object: currentVideoDevice!)
-//                        
-//                        NotificationCenter.default.addObserver(self, selector: #selector(self.subjectAreaDidChange), name: Notification.Name("AVCaptureDeviceSubjectAreaDidChangeNotification"), object: videoDeviceInput.device)
+                        //                        NotificationCenter.default.removeObserver(self, name: Notification.Name("AVCaptureDeviceSubjectAreaDidChangeNotification"), object: currentVideoDevice!)
+                        //
+                        //                        NotificationCenter.default.addObserver(self, selector: #selector(self.subjectAreaDidChange), name: Notification.Name("AVCaptureDeviceSubjectAreaDidChangeNotification"), object: videoDeviceInput.device)
                         
                         self.captureSession.addInput(videoDeviceInput)
                         self.videoDeviceInput = videoDeviceInput
@@ -205,20 +220,19 @@ class CameraView: UIView  {
                      a video device is disconnected from the session. After the new video device is
                      added to the session, re-enable Live Photo capture on the AVCapturePhotoOutput if it is supported.
                      */
-                  //  self.stillImageOutput.isLivePhotoCaptureEnabled = self.stillImageOutput.isLivePhotoCaptureSupported;
-                    
+                    //  self.stillImageOutput.isLivePhotoCaptureEnabled = self.stillImageOutput.isLivePhotoCaptureSupported;
                     self.captureSession.commitConfiguration()
                 }
                 catch {
                     print("Error occured while creating video device input: \(error)")
                 }
             }
-            
+            DispatchQueue.main.async {
+                self.flipCameraButton.isEnabled = true
+                self.captureButton.isEnabled = true
+            }
         }
-        
     }
-
-
 }
 
 extension CameraView {
@@ -233,7 +247,10 @@ extension CameraView {
                              ]
         settings.previewPhotoFormat = previewFormat
         
-        let photoCaptureDelegate = PhotoCaptureDelegate(with: settings, capturedPhoto: { [unowned self] (image) in
+        let photoCaptureDelegate = PhotoCaptureDelegate(with: settings, capturedPhoto: { [unowned self] (cgImage) in
+            
+            let orientation: UIImageOrientation = self.isFront ? .leftMirrored : .right
+            let image = UIImage(cgImage: cgImage, scale: 1.0, orientation: orientation)
             self.tempImageView.image = image
             self.tempImageView.isHidden = false
             }, completed: { [unowned self] (photoCaptureDelegate) in
@@ -246,7 +263,6 @@ extension CameraView {
          we store it in an array to maintain a strong reference to this object
          until the capture is completed.
          */
-        
         self.inProgressPhotoCaptureDelegates[photoCaptureDelegate.requestedPhotoSettings.uniqueID] = photoCaptureDelegate
         self.stillImageOutput.capturePhoto(with: settings, delegate: photoCaptureDelegate)
     }
@@ -256,9 +272,11 @@ extension CameraView {
         if didtakePhoto {
             tempImageView.isHidden = true
             didtakePhoto = false
+            flipCameraButton.isEnabled = true
         } else {
             captureSession.startRunning()
             didtakePhoto = true
+            flipCameraButton.isEnabled = false
             didPressTakePhoto()
         }
     }
@@ -268,59 +286,6 @@ extension CameraView {
 
 
 
-
-
-class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
-    
-    private(set) var requestedPhotoSettings: AVCapturePhotoSettings
-    private let completed: (PhotoCaptureDelegate) -> ()
-    private let capturedPhoto: (UIImage) -> ()
-
-    
-    init(with requestedPhotoSettings: AVCapturePhotoSettings,
-         capturedPhoto: @escaping (UIImage) -> (),
-         completed: @escaping (PhotoCaptureDelegate) -> ()) {
-        
-        self.requestedPhotoSettings = requestedPhotoSettings
-        self.completed = completed
-        self.capturedPhoto = capturedPhoto
-    }
-    
-    func capture(_ captureOutput: AVCapturePhotoOutput, didFinishProcessingPhotoSampleBuffer photoSampleBuffer: CMSampleBuffer?, previewPhotoSampleBuffer: CMSampleBuffer?, resolvedSettings: AVCaptureResolvedPhotoSettings, bracketSettings: AVCaptureBracketedStillImageSettings?, error: Error?) {
-        
-        if let error = error {
-            print(error.localizedDescription)
-        }
-        
-        guard let sampleBuffer = photoSampleBuffer, let previewBuffer = previewPhotoSampleBuffer,
-            let dataImage = AVCapturePhotoOutput.jpegPhotoDataRepresentation(forJPEGSampleBuffer: sampleBuffer, previewPhotoSampleBuffer: previewBuffer),
-            let dataProvider = CGDataProvider(data: dataImage as CFData),
-            let cgImageRef = CGImage.init(jpegDataProviderSource: dataProvider, decode: nil, shouldInterpolate: true, intent: CGColorRenderingIntent.defaultIntent) else {
-                print("Error on captureOutput")
-                return
-        }
-        
-        let image = UIImage(cgImage: cgImageRef, scale: 1.0, orientation: .leftMirrored)
-        capturedPhoto(image)
-    }
-    
-    func capture(_ captureOutput: AVCapturePhotoOutput, didFinishCaptureForResolvedSettings resolvedSettings: AVCaptureResolvedPhotoSettings, error: Error?) {
-        completed(self)
-    }
-}
-
-
-extension UIInterfaceOrientation {
-    var videoOrientation: AVCaptureVideoOrientation? {
-        switch self {
-        case .portrait: return .portrait
-        case .portraitUpsideDown: return .portraitUpsideDown
-        case .landscapeLeft: return .landscapeLeft
-        case .landscapeRight: return .landscapeRight
-        default: return nil
-        }
-    }
-}
 
 
 

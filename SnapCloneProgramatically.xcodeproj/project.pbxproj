@@ -16,6 +16,8 @@
 		7B94BF121EBCEA4C002E5B12 /* CameraVC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B94BF111EBCEA4C002E5B12 /* CameraVC.swift */; };
 		7B94BF141EBCEA6B002E5B12 /* PostsVC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B94BF131EBCEA6B002E5B12 /* PostsVC.swift */; };
 		7B94BF171EBCFA15002E5B12 /* CameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B94BF161EBCFA15002E5B12 /* CameraView.swift */; };
+		7B94BF1A1EBD5D68002E5B12 /* PhotoCaptureDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B94BF191EBD5D68002E5B12 /* PhotoCaptureDelegate.swift */; };
+		7B94BF1C1EBD5D9B002E5B12 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B94BF1B1EBD5D9B002E5B12 /* Extensions.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,6 +32,8 @@
 		7B94BF111EBCEA4C002E5B12 /* CameraVC.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CameraVC.swift; sourceTree = "<group>"; };
 		7B94BF131EBCEA6B002E5B12 /* PostsVC.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PostsVC.swift; sourceTree = "<group>"; };
 		7B94BF161EBCFA15002E5B12 /* CameraView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CameraView.swift; sourceTree = "<group>"; };
+		7B94BF191EBD5D68002E5B12 /* PhotoCaptureDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PhotoCaptureDelegate.swift; sourceTree = "<group>"; };
+		7B94BF1B1EBD5D9B002E5B12 /* Extensions.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Extensions.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -63,6 +67,7 @@
 			isa = PBXGroup;
 			children = (
 				7B94BEF91EBCCBA4002E5B12 /* AppDelegate.swift */,
+				7B94BF181EBD5D53002E5B12 /* Camera */,
 				7B94BF151EBCFA08002E5B12 /* View */,
 				7B94BF0E1EBCEA13002E5B12 /* Controllers */,
 				7B94BF031EBCCBA4002E5B12 /* Assets.xcassets */,
@@ -87,9 +92,18 @@
 		7B94BF151EBCFA08002E5B12 /* View */ = {
 			isa = PBXGroup;
 			children = (
-				7B94BF161EBCFA15002E5B12 /* CameraView.swift */,
 			);
 			name = View;
+			sourceTree = "<group>";
+		};
+		7B94BF181EBD5D53002E5B12 /* Camera */ = {
+			isa = PBXGroup;
+			children = (
+				7B94BF161EBCFA15002E5B12 /* CameraView.swift */,
+				7B94BF191EBD5D68002E5B12 /* PhotoCaptureDelegate.swift */,
+				7B94BF1B1EBD5D9B002E5B12 /* Extensions.swift */,
+			);
+			name = Camera;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -165,11 +179,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				7B94BF101EBCEA2E002E5B12 /* FeedVC.swift in Sources */,
+				7B94BF1C1EBD5D9B002E5B12 /* Extensions.swift in Sources */,
 				7B94BF171EBCFA15002E5B12 /* CameraView.swift in Sources */,
 				7B94BEFC1EBCCBA4002E5B12 /* MainVC.swift in Sources */,
 				7B94BF141EBCEA6B002E5B12 /* PostsVC.swift in Sources */,
 				7B94BF121EBCEA4C002E5B12 /* CameraVC.swift in Sources */,
 				7B94BEFA1EBCCBA4002E5B12 /* AppDelegate.swift in Sources */,
+				7B94BF1A1EBD5D68002E5B12 /* PhotoCaptureDelegate.swift in Sources */,
 				7B94BF021EBCCBA4002E5B12 /* SnapCloneProgramatically.xcdatamodeld in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

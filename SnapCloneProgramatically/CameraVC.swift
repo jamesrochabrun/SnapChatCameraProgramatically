@@ -33,10 +33,10 @@ class CameraVC: UIViewController {
             cameraView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
             ])
     }
-    
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        cameraView.didPressTakeAnother()
-    }
+//    
+//    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+//        cameraView.didPressTakeAnother()
+//    }
 }
 
 
